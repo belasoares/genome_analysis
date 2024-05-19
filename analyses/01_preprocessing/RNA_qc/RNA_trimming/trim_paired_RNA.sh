@@ -27,8 +27,8 @@ do
     $OUTPUT_DIR/forward_unpaired_${base_f1} \
     $OUTPUT_DIR/reverse_paired_${base_f2} \
     $OUTPUT_DIR/reverse_unpaired_${base_f2} \
-    LEADING:20 \
-    TRAILING:20 \
+    LEADING:3 \
+    TRAILING:3 \
     SLIDINGWINDOW:4:20 \
-    MINLEN:100
+    MINLEN:20
 done
