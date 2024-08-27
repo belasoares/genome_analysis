@@ -1,0 +1,94 @@
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("DESeq2")
+install.packages("tidyverse")
+
+library(DESeq2)
+library(tidyverse)
+library(ggplot2)
+
+#Sample dataframe
+counts_HP126C <- read.table("SRR24516459_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "MutantC"))
+counts_HP126B <- read.table("SRR24516460_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "MutantB"))
+counts_HP126A <- read.table("SRR24516461_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "MutantC"))
+
+counts_R7C <- read.table("SRR24516462_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "WildtypeC"))
+counts_R7B <- read.table("SRR24516463_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "WildtypeB"))
+counts_R7A <- read.table("SRR24516464_sorted_counts.txt", header=FALSE, sep="\t", col.names=c("Gene", "WildtypeC"))
+
+#Put all dataframes in a list
+dataframe_list <- list(counts_HP126C, counts_HP126B, counts_HP126A, counts_R7C, counts_R7B, counts_R7A)
+
+#Merge 
+count_data <- dataframe_list %>% reduce(full_join, by='Gene')
+
+#Prepare column data for DESeq2
+conditions <- factor(c("mutant", "mutant", "mutant", "wildtype", "wildtype", "wildtype"))
+colData <- DataFrame(condition = conditions)
+
+#Create a DEseq dataset object
+dds <- DESeqDataSetFromMatrix(countData = as.matrix(count_data[,-1]),  # Exclude the gene column
+                              colData = colData,
+                              design = ~ condition)
+#Run the DESeq analysis
+dds <- DESeq(dds)
+
+#Get the results
+res <- results(dds)
+summary(res)
+
+#Order results by p-value
+res_ordered <- res[order(res$pvalue),]
+head(res_ordered)
+
+#For stronger statistical significance, we can look at the <0.05% level
+res05 <- results(dds, alpha=0.05)
+summary(res05)
+
+#The number of genes with an adjusted p-value <0.05 are:
+sum(res$padj < 0.05, na.rm=TRUE)
+
+#Plotting the results
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot"))
+abline(h = -log10(0.05), col="red")
+
+#Plot of the variance-mean dependence
+plotDispEsts(dds)
+dispersions <- estimateDispersions(dds)
+plotDispEsts(dds, main="Variance-Mean Dependence")
+
+#Convert results data to basic dataframe
+data <- data.frame(res)
+head(data)
+
+#Add an additional column that identifies a gene as unregulated, downregulated, or unchanged
+#Note the choice of pvalue and log2FoldChange cutoff. 
+data <- data %>%
+  mutate(
+    Expression = case_when(log2FoldChange >= log(1) & padj <= 0.05 ~ "Up-regulated",
+                           log2FoldChange <= -log(1) & padj <= 0.05 ~ "Down-regulated",
+                           TRUE ~ "Unchanged")
+  )
+head(data)
+
+top <- 10
+
+#We are getting the top 10 up and down regulated genes by filtering the column Up-regulated and Down-regulated and sorting by the adjusted p-value. 
+top_genes <- bind_rows(
+  data %>%
+    filter(Expression == 'Up-regulated') %>%
+    arrange(padj, desc(abs(log2FoldChange))) %>%
+    head(top),
+  data %>%
+    filter(Expression == 'Down-regulated') %>%
+    arrange(padj, desc(abs(log2FoldChange))) %>%
+    head(top)
+)
+
+#Create a datframe just holding the top 10 genes
+Top_Hits = head(arrange(data,pvalue),10)
+Top_Hits
+
+
+
